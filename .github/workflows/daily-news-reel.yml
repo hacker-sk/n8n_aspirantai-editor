@@ -2,7 +2,7 @@ name: Daily news reel
 
 on:
   schedule:
-    - cron: '30 3 * * *'   # 03:30 UTC = 09:00 IST
+    - cron: '7 * * * *'   # checks every hour; src/gate.js decides if it is time (random 2-4 hour gaps)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -27,11 +27,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check if it is time to post
+        id: gate
+        env:
+          DATA_DIR: ./state
+        run: node src/gate.js check
+
       - uses: actions/setup-node@v4
+        if: steps.gate.outputs.due == 'true'
         with:
           node-version: 20
 
       - name: Install dependencies
+        if: steps.gate.outputs.due == 'true'
         run: |
           npm install
           npx playwright install --with-deps chromium
@@ -39,20 +47,25 @@ jobs:
           echo "FONT_FILE=$(fc-match -f '%{file}' 'Noto Sans:bold')" >> $GITHUB_ENV
 
       - name: Make video and post
+        if: steps.gate.outputs.due == 'true'
         env:
           DATA_DIR: ./state
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_FALLBACK_URL: ${{ vars.IG_FALLBACK_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          JOB_LIST_URL: ${{ vars.JOB_LIST_URL }}
-          JOB_LINK_SELECTOR: ${{ vars.JOB_LINK_SELECTOR }}
           NEWS_HOME_URL: ${{ vars.NEWS_HOME_URL }}
           POST_URL: ${{ inputs.post_url }}
         run: node src/main.js news ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry' || '' }}
 
+      - name: Schedule the next post (random 2-4 hours)
+        if: ${{ steps.gate.outputs.due == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          DATA_DIR: ./state
+        run: node src/gate.js schedule
+
       - name: Keep the video for 3 days (check it under Artifacts)
-        if: always()
+        if: ${{ always() && steps.gate.outputs.due == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: video
