@@ -58,8 +58,8 @@ jobs:
           POST_URL: ${{ inputs.post_url }}
         run: node src/main.js news ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry' || '' }}
 
-      - name: Schedule the next post (random 2-4 hours)
-        if: ${{ steps.gate.outputs.due == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+      - name: Schedule the next post (random 2-4 hours, scheduled runs only)
+        if: ${{ github.event_name == 'schedule' && steps.gate.outputs.due == 'true' }}
         env:
           DATA_DIR: ./state
         run: node src/gate.js schedule
