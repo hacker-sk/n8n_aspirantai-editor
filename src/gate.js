@@ -1,7 +1,7 @@
-import fs from 'node:fs';
+const fs = process.getBuiltinModule('node:fs');
 
 const DIR = process.env.DATA_DIR || './state';
-const FILE = path.join(DIR, 'schedule.json');
+const FILE = DIR + '/schedule.json';
 const MIN = Number(process.env.MIN_GAP_MINUTES || 120);
 const MAX = Number(process.env.MAX_GAP_MINUTES || 240);
 const TICK = Number(process.env.SCHEDULE_TICK_MINUTES || 60);
