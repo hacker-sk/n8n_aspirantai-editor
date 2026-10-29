@@ -7,7 +7,7 @@ const MUSIC_DIR = process.env.MUSIC_DIR || './music';
 const NEWS_FILE = path.join(DATA_DIR, 'news-posted.json');
 const BRAND_TEXT = process.env.BRAND_TEXT || 'AspirantAI';
 const LOGO_URL = process.env.LOGO_URL || 'https://www.aspirantai.co.in/aspirant-owl.png';
-const REPEAT_DAYS = 3;
+const REPEAT_DAYS = Number(process.env.REPEAT_DAYS || 0);
 
 // Only exam/job related posts are used; political posts are skipped on purpose.
 const INCLUDE = new RegExp(
@@ -127,7 +127,7 @@ async function choosePost(browser, homeUrl, forcedPostUrl) {
       const hay = p.text + ' ' + p.tags.join(' ');
       if (!INCLUDE.test(hay) || EXCLUDE.test(hay)) continue;
       if (postedUrls.has(p.url)) continue;
-      if (recentKeys.has(parseContent(p.text, p.tags).key)) continue;
+      if (REPEAT_DAYS > 0 && recentKeys.has(parseContent(p.text, p.tags).key)) continue;
       return p;
     }
     throw new Error(`No suitable unposted news post found on ${homeUrl} (found ${posts.length} posts)`);
