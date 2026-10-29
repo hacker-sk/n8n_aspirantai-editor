@@ -195,7 +195,7 @@ async function encodeClassic(workDir, outFile) {
   await run('ffmpeg', args, workDir);
 }
 
-const TEMPLATES = ['classic', 'student'];
+const TEMPLATES = ['classic', 'student', 'brief'];
 
 function pickTemplate() {
   const forced = (process.env.NEWS_TEMPLATE || '').toLowerCase();
@@ -283,12 +283,96 @@ async function encodeStudent(workDir, outFile) {
   await run('ffmpeg', args, workDir);
 }
 
+
+function briefCardHtml(c, scene) {
+  const pts = c.points.length ? c.points : [c.headline];
+  const rest = pts.slice(1);
+  const hasNum = /\d/.test(c.key) && !/^20\d\d$/.test(c.key);
+  let label;
+  let body;
+  if (scene === 1) {
+    label = 'STOP SCROLLING';
+    body = `<div class="hl">${esc(c.headline)}</div>`;
+  } else if (scene === 2) {
+    label = 'THE UPDATE';
+    body = `<div class="big">${esc(pts[0])}</div>`;
+  } else if (scene === 3) {
+    label = 'DETAILS';
+    body = rest.length
+      ? `<ul>${rest.map((p) => `<li><span class="tick">&#10003;</span><span>${esc(p)}</span></li>`).join('')}</ul>`
+      : `<div class="big">${esc(c.headline)}</div>`;
+  } else {
+    label = 'YOUR NEXT STEP';
+    body = `${hasNum ? `<div class="num">${esc(c.key)}</div>` : ''}<div class="cta">Check the full details on ${esc(BRAND_TEXT)}</div><div class="sub">Link in bio</div>`;
+  }
+  const bars = [1, 2, 3, 4].map((n) => `<i class="${n <= scene ? 'on' : ''}"></i>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0}
+body{width:1080px;height:1920px;font-family:'Noto Sans','Noto Sans Devanagari',Arial,sans-serif;color:#fff;background:radial-gradient(circle at 80% 10%,#134e4a 0%,#05080f 55%);display:flex;flex-direction:column;padding:100px 80px 260px}
+.bars{display:flex;gap:14px}
+.bars i{flex:1;height:10px;border-radius:6px;background:rgba(255,255,255,.2)}
+.bars i.on{background:#facc15}
+.brand{margin-top:50px;display:flex;align-items:center;gap:20px;font-size:40px;font-weight:700}
+.brand img{width:76px;height:76px;border-radius:20px}
+.label{margin-top:70px;font-size:40px;font-weight:800;letter-spacing:6px;color:#2dd4bf}
+.main{flex:1;display:flex;flex-direction:column;justify-content:center}
+.hl{font-size:92px;font-weight:900;line-height:1.2}
+.big{font-size:76px;font-weight:800;line-height:1.3;color:#facc15}
+ul{list-style:none;padding:0;display:flex;flex-direction:column;gap:48px}
+li{display:flex;gap:30px;align-items:flex-start;font-size:56px;line-height:1.35;font-weight:700}
+.tick{flex:none;width:72px;height:72px;border-radius:50%;background:#2dd4bf;color:#05080f;font-size:46px;display:flex;align-items:center;justify-content:center}
+.num{font-size:180px;font-weight:900;color:#facc15;line-height:1.1;word-break:break-all;margin-bottom:50px}
+.cta{font-size:60px;font-weight:800;line-height:1.3}
+.sub{margin-top:28px;font-size:42px;color:#2dd4bf;font-weight:700}
+</style></head><body>
+<div class="bars">${bars}</div>
+<div class="brand"><img src="${esc(LOGO_URL)}"><span>${esc(BRAND_TEXT)}</span></div>
+<div class="label">${label}</div>
+<div class="main">${body}</div>
+</body></html>`;
+}
+
+async function renderBriefCards(browser, content, workDir) {
+  const ctx = await browser.newContext({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 2 });
+  const page = await ctx.newPage();
+  try {
+    for (const scene of [1, 2, 3, 4]) {
+      await page.setContent(briefCardHtml(content, scene), { waitUntil: 'networkidle' });
+      await page.screenshot({ path: path.join(workDir, `brief_${scene}.png`), type: 'png' });
+    }
+  } finally {
+    await ctx.close();
+  }
+}
+
+async function encodeBrief(workDir, outFile) {
+  const music = await pickMusic();
+  const z = (rate) => `zoompan=z='min(zoom+${rate},1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=90:s=1080x1920:fps=30,format=yuv420p`;
+  let graph =
+    `[0:v]${z(0.0008)}[v0];[1:v]${z(0.0006)}[v1];[2:v]${z(0.0008)}[v2];[3:v]${z(0.0006)}[v3];` +
+    '[v0][v1]xfade=transition=wipeup:duration=0.4:offset=2.6[x1];' +
+    '[x1][v2]xfade=transition=wipeup:duration=0.4:offset=5.2[x2];' +
+    '[x2][v3]xfade=transition=wipeup:duration=0.4:offset=7.8[v]';
+  const args = ['-y', '-i', 'brief_1.png', '-i', 'brief_2.png', '-i', 'brief_3.png', '-i', 'brief_4.png'];
+  if (music) {
+    args.push('-stream_loop', '-1', '-i', music);
+    graph += ';[4:a]afade=t=in:d=0.8,afade=t=out:st=8.8:d=1.2,volume=0.6[a]';
+  }
+  args.push('-filter_complex', graph, '-map', '[v]');
+  if (music) args.push('-map', '[a]', '-c:a', 'aac', '-b:a', '128k');
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-t', '10', '-movflags', '+faststart', outFile);
+  await run('ffmpeg', args, workDir);
+}
+
 export async function makeNewsVideo(browser, { homeUrl, postUrl, dryRun, workDir, outFile }) {
   const post = await choosePost(browser, homeUrl, postUrl);
   const content = parseContent(post.text, post.tags);
   const template = pickTemplate();
   console.log('Template:', template);
-  if (template === 'student') {
+  if (template === 'brief') {
+    await renderBriefCards(browser, content, workDir);
+    await encodeBrief(workDir, outFile);
+  } else if (template === 'student') {
     await renderStudentCards(browser, content, workDir);
     await encodeStudent(workDir, outFile);
   } else {
