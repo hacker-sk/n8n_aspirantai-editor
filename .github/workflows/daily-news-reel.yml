@@ -56,6 +56,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NEWS_HOME_URL: ${{ vars.NEWS_HOME_URL }}
           POST_URL: ${{ inputs.post_url }}
+          N8N_BUFFER_WEBHOOK_URL: ${{ secrets.N8N_BUFFER_WEBHOOK_URL }}
         run: node src/main.js news ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry' || '' }}
 
       - name: Schedule the next post (random 2-4 hours, scheduled runs only)
