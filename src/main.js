@@ -4,6 +4,7 @@ import path from 'node:path';
 import { makeNewsVideo, markNewsPosted } from './news.js';
 import { makeJobVideo, markJobPosted } from './job.js';
 import { publishReel } from './instagram.js';
+import { sendToBuffer } from './buffer.js';
 
 const kind = process.argv[2];
 const dry = process.argv.includes('--dry');
@@ -53,8 +54,9 @@ try {
   if (dry) {
     console.log('Dry run: not posting. Caption would be:\n' + caption);
   } else {
-    const id = await publishReel(outFile, caption);
-    console.log('Published to Instagram, media id:', id);
+    const useBuffer = kind === 'news' && Boolean(process.env.N8N_BUFFER_WEBHOOK_URL);
+    const id = await (useBuffer ? sendToBuffer(outFile, caption) : publishReel(outFile, caption));
+    console.log(useBuffer ? 'Sent to Buffer via n8n:' : 'Published to Instagram, media id:', id);
     await markPosted();
   }
 } finally {
