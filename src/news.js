@@ -10,12 +10,8 @@ const LOGO_URL = process.env.LOGO_URL || 'https://www.aspirantai.co.in/aspirant-
 const REPEAT_DAYS = Number(process.env.REPEAT_DAYS || 0);
 
 // Only exam/job related posts are used; political posts are skipped on purpose.
-const INCLUDE = new RegExp(
-  process.env.NEWS_INCLUDE ||
-    'recruit|vacanc|exam|job|result|admit card|syllabus|notification|government|police|railway|ssc|upsc|bank|rbi|agniveer|constable|cutoff|scholarship',
-  'i'
-);
-const EXCLUDE = new RegExp(process.env.NEWS_EXCLUDE || 'politic|congress|bjp|\\bnda\\b|tmc|election', 'i');
+const INCLUDE = new RegExp(process.env.NEWS_INCLUDE || '', 'i'); // empty = every post qualifies
+const EXCLUDE = new RegExp(process.env.NEWS_EXCLUDE || '(?!)', 'i'); // nothing is excluded unless NEWS_EXCLUDE is set
 
 function run(cmd, args, cwd) {
   return new Promise((resolve, reject) => {
@@ -45,7 +41,7 @@ export async function markNewsPosted(url, key) {
   const list = await readNewsPosted();
   list.push({ url, key, ts: Date.now() });
   await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(NEWS_FILE, JSON.stringify(list.slice(-500)));
+  await fs.writeFile(NEWS_FILE, JSON.stringify(list));
 }
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -107,12 +103,28 @@ async function extractPosts(page) {
   });
 }
 
+async function loadAllPosts(page) {
+  let last = -1;
+  let stalls = 0;
+  for (let i = 0; i < 40 && stalls < 2; i++) {
+    const count = await page.evaluate(() => document.querySelectorAll('a[href*="/posts/"]').length);
+    stalls = count === last ? stalls + 1 : 0;
+    last = count;
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const more = page.getByRole('button', { name: /load more|show more|view more|see more/i }).first();
+    if (await more.count()) await more.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 async function choosePost(browser, homeUrl, forcedPostUrl) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   try {
     await page.goto(forcedPostUrl || homeUrl, { waitUntil: 'networkidle', timeout: 45000 });
     await page.waitForTimeout(1500);
+    if (!forcedPostUrl) await loadAllPosts(page);
     const posts = await extractPosts(page);
     if (forcedPostUrl) {
       if (!posts.length) throw new Error('Could not read the post text from ' + forcedPostUrl);
